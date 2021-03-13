@@ -145,8 +145,8 @@ local function pack(zh, read, path, size, crc32)
 end
 
 
---- Writes the central directory, signaling the end of the zip file. Once
---- closed, no more data shall be written.
+--- Writes the central directory, ending the zip file. No new data should be
+--- written after the central directory.
 ---
 --- @param zh zh*
 local function close(zh)
@@ -225,18 +225,29 @@ local function close(zh)
     zh:wn(4, -1)                -- Size of the central directory; fixed: ZIP64
     zh:wn(4, -1)                -- Offset of start of central directory with respect to the starting disk number; fixed: ZIP64
     zh:wn(2, 0)                 -- .ZIP file comment length
-
-    ----------------------------------------------------------------------------
-
-    zh.closed = true
 end
 
 
 --------------------------------------------------------------------------------
 
+--- Opens a zip stream wrapping the provided [write] function. The stream must
+--- be closed with the `zip.close()` function in order to obtain a valid zip
+--- file.
+---
+--- @param write function A function `write(str) -> any, str?` taking a string
+--- and returning values that fit the `assert` interface: a value indicating the
+--- success or failure of the operation optionally followed by an error message.
+--- Typically the file.write function from a file handled obtained with
+--- `io.open`.
+--- @return zip* handle A handle for the opened stream
 function zip.wrap(write)
     --- Internal zip handle, encapsulates state and internal operations.
+    ---
     --- @class zh*
+    ---
+    --- @field count integer Number of bytes written so far
+    --- @field directory table Metadata of all files written
+    --- @field closed boolean Whether new files can be added to the stream
     local zh = {
         count = 0,
         directory = {},
@@ -258,22 +269,33 @@ function zip.wrap(write)
     end
 
 
-    --- Handle for the zip file
+    --- Handle for the zip stream
+    ---
     --- @class zip*
+    ---
+    --- @field size integer Number of bytes written so far
     local handle = {
         size = 0
     }
 
-    function handle.pack(self, fspath, zippath)
-        local fh = io.open(fspath, 'rb')
-        -- TODO: abort in case of error
-        pack(zh, function(n) return fh:read(n) end, zippath or fspath)
-        fh:close()
+    --- Write the bytes returned by [read] as a file in the zip stream.
+    ---
+    --- @param read function A function `read(n) -> str|nil` returning a string
+    --- of length at most `n`, or nil if the end of the stream is reached.
+    --- Typically the `file.read` function from a file handle obtained with
+    --- `io.open`.
+    --- @param zippath string Path of the file inside the archive. Does not need
+    --- to match the path on the filesystem.
+    function handle.pack(self, read, zippath)
+        pack(zh, read, zippath)
         self.size = zh.count
     end
 
+    --- Write the central directory of the zip file, hereby closing the stream.
+    --- Subsequent write operations on the stream will throw.
     function handle.close(self)
         close(zh)
+        self.closed = true
         self.size = zh.count
     end
 
