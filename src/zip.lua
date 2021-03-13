@@ -105,8 +105,16 @@ local function pack(zh, read, path, size, crc32)
     while true do
         local data = read(8192)
         if not data then break end
+
         zh:wb(data)
         size = size + #data
+
+        if fh.size and size > fh.size then
+            error(string.format(
+                'file #%d %s: size mismatch: expected %d bytes, read %d already',
+                #zh.directory, fh.path, fh.size, size))
+        end
+
         crc32 = crc.crc32(data, crc32)
     end
 
@@ -143,12 +151,9 @@ end
 --- @param zh zh*
 local function close(zh)
     local offset_cdfh = zh.count
-    local size_cdfh = 0
+    local size_cdfh = -zh.count -- size = end - start = -start + end
 
     for _, fh in ipairs(zh.directory) do
-        -- Fixed-size fields (66 bytes) + variable-size fields
-        size_cdfh = size_cdfh + 66 + fh.lpath
-
         ------------------------------------------------------------------------
         -- Central directory file header
         -- @see 4.3.12 Central directory structure
@@ -181,6 +186,8 @@ local function close(zh)
         zh:wn(8, fh.size)       -- Uncompressed size
         zh:wn(8, fh.size)       -- Compressed size
     end
+
+    size_cdfh = size_cdfh + zh.count
 
     ----------------------------------------------------------------------------
     -- ZIP64 end of central directory record
@@ -242,7 +249,7 @@ function zip.wrap(write)
             error('write attempt on a closed zip handle')
         end
         self.count = self.count + #str
-        write(str)
+        assert(write(str))
     end
 
     --- Write a number in little-endian using the specified number of bytes.
