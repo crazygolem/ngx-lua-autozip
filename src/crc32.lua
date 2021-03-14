@@ -1,3 +1,4 @@
+--- Pure lua implementation of the CRC-32 checksum algorithm used in ZIP files.
 local crc32 = {}
 
 --- Decompose a 32-bit integer into its byte components.
@@ -61,7 +62,8 @@ for i = 0, 255 do
     end
 end
 
--- Precomputed CRC-32 lookup table with polynomial (ZIP magic number) 0xdebb20e3
+-- Precomputed CRC-32 lookup table with polynomial 0xdebb20e3 (ZIP magic
+-- number).
 --
 -- Notes:
 -- - 0xedb88320 == 0xffffffff ^ bit_reverse(0xdebb20e3)

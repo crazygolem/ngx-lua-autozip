@@ -1,29 +1,40 @@
+--- The autozip module assembles ZIP archives on the fly and streams the result
+--- to the client.
+---
+--- It is meant to complement nginx' autoindex module by allowing users to
+--- download easily the content of the directories they browse.
+---
+--- It was inspired by the mod_zip nginx module, but has the goal to provide a
+--- saner API, notably in not requiring an upstream server to generate a list of
+--- local files.
+---
+--- The only dependency that is not implemented purely in lua is `lfs`, usually
+--- available in the distribution's package manager under the name
+--- *lua-filesystem*.
+local autozip = {}
+
+
 local lfs = require 'lfs'
 local ngx = require 'ngx'
 local zip = require 'zip'
 
-local autozip = {}
-
+--- Return an iterator which walks through a directory tree and yields on each
+--- element (e.g. file, directory) encountered along the way, or optionally only
+--- those allowed by [filter].
 ---
--- Return an iterator which walks through a directory tree starting at
--- `startdir`.
---
--- The optional argument `filter` is a function that is applied to each
--- element determining whether it will be yielded, and for a directory
--- additionally whether it will be recursed into.
---
--- The iterator returns `(rpath, name, mode, islink)` where
--- - `rpath` is the path the element *relative to `startdir`*
--- - `name` is the name of the element
--- - `mode` corresponds to the element's type (see lfs.attributes)
--- - `islink` returns true iff the element is a symlink. Note that when `islink`
---   is true, `mode` is the mode of the symlink's target.
---
--- The `filter` argument is a function `(path, name, mode, islink) -> bool`
--- where `path` is the path to the element (note: contrary to the iterator, it
--- is *not* relative to `startdir`) and the other parameters are the same as for
--- the iterator. If the filter function returns true, the element is yielded,
--- and if the element is a directory it will be recursed into.
+--- @param startdir string Directory on the filesystem where the walk will start
+--- @param filter? fun(path: string, fname: string, mode:string, islink: boolean)
+--- Function that is applied to each element determining whether it will be
+--- yielded, and for a directory additionally whether it will be recursed into.
+--- The arguments are: [path] is the absolute path of the element, incl.
+--- filename; [fname] is the filename of the element; [mode] is the element's
+--- type (see `lfs.attributes`); and [islink] is `true` iff the element is a
+--- symlink (in which case [mode] is the type of the symlink's target).
+--- @return string rpath, string fname, string mode, boolean islink [rpath] is
+--- the path of the element relative to [startdir], incl. filename; [fname] is
+--- the element's filename; [mode] is the element's type (see `lfs.attributes`);
+--- and [islink] is true iff the element is a symlink (in which case [mode] is
+--- the type of the symlink's target)
 local function walk(startdir, filter)
     if lfs.attributes(startdir, 'mode') ~= 'directory' then
         error('startdir is not a directory: ' .. startdir)
@@ -62,13 +73,16 @@ local function walk(startdir, filter)
 end
 
 ---
--- Escape `uri` as a full URI, i.e. preserving the directory separators.
--- This should perform the same as `ngx.escape_uri` with `type = 0`, which is
--- available since http-lua 0.10.16 (but at the time of writing, I am still
--- using version 0.10.13 of the module).
---
--- TODO: Replace calls to this method with `ngx.escape_uri(uri, 0)` when it
--- becomes available.
+--- Escape [uri] as a full URI, i.e. preserving the directory separators.
+--- This should perform the same as `ngx.escape_uri` with `type = 0`, which is
+--- available since http-lua 0.10.16 (but at the time of writing, I am still
+--- using version 0.10.13 of the module).
+---
+--- TODO Replace calls to this method with `ngx.escape_uri(uri, 0)` when it
+--- becomes available.
+---
+--- @param uri string The URI to escape
+--- @return string escaped The escaped URI
 local function escape_uri(uri)
     return uri:gsub('[^-._~%w/]', function(c)
         return string.format('%%%02X', c:byte())
