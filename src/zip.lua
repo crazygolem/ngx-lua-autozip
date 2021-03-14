@@ -42,10 +42,10 @@ end
 --- the `file.read` function from a file handle obtained with `io.open`.
 --- @param path string Path of the file inside the archive. Does not need to
 --- match the path on the filesystem.
---- @param size integer|nil Size of the file. If provided, reading more bytes
---- will result in an error.
---- @param crc32 integer|nil CRC-32 of the file. If provided, the computed CRC
---- will be verified against it, and a mismatch will result in an error.
+--- @param size? integer Size of the file. If provided, reading more bytes will
+--- result in an error.
+--- @param crc32? integer CRC-32 of the file. If provided, the computed CRC will
+--- be verified against it, and a mismatch will result in an error.
 local function pack(zh, read, path, size, crc32)
     --- File metadata, for use later in the central directory
     --- @class fh*
@@ -53,7 +53,6 @@ local function pack(zh, read, path, size, crc32)
     table.insert(zh.directory, fh)
 
     fh.path = path:gsub('\\', '/')  -- File name/path in the zip TODO: ensure UTF-8, should \ -> / be handled by caller?
-    fh.lpath = string.len(fh.path)  -- Length of the file name
     fh.mtime = 0                    -- TODO
     fh.mdate = 0                    -- TODO
     fh.offset = zh.count            -- Offset of the LFH
@@ -80,7 +79,7 @@ local function pack(zh, read, path, size, crc32)
     zh:wn(4, 0)                 -- CRC32; defered to data descriptor
     zh:wn(4, -1)                -- Compressed size; fixed: ZIP64
     zh:wn(4, -1)                -- Uncompressed size; fixed: ZIP64
-    zh:wn(2, fh.lpath)          -- File name length
+    zh:wn(2, #fh.path)          -- File name length
     zh:wn(2, 20)                -- Extra field length: 20 (ZIP64)
 
     zh:wb(fh.path)              -- File name
@@ -171,7 +170,7 @@ local function close(zh)
         zh:wn(4, fh.crc32)      -- CRC32
         zh:wn(4, -1)            -- Compressed size; ZIP64 constant
         zh:wn(4, -1)            -- Uncompressed size; ZIP64 constant
-        zh:wn(2, fh.lpath)      -- File name length
+        zh:wn(2, #fh.path)      -- File name length
         zh:wn(2, 20)            -- Extra field length: 20 (ZIP64)
         zh:wn(2, 0)             -- File comment length
         zh:wn(2, 0)             -- Disk number start
