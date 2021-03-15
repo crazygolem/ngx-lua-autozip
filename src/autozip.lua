@@ -151,6 +151,65 @@ function autozip.dir(fsroot)
     zh:close()
 end
 
+--- Attempt to serve a directory by zipping it on the fly, in conjunction with
+--- a small `location` configuration snippet that can be inserted in a `server`
+--- directive or nested in another `location` directive:
+---
+---     location ~ \.zip$ {
+---       try_files $uri $uri/ @try_zip;
+---     }
+---
+--- and the corresponding named location that in turn calls this function:
+---
+---     location @try_zip {
+---         content_by_lua_block {
+---             local autozip = require 'autozip'
+---             autozip.try_zip('=404')
+---         }
+---     }
+---
+--- With the above configuration, autozip is triggered when all of the following
+--- conditions apply:
+--- 1. The URL requests a ZIP file (based on the extension)
+--- 2. There is no file at that location
+--- 3. There is no directory (with a name that ends in '.zip') either
+--- 4. There is a directory with the same name but without the extension (i.e.
+---    the extension is "virtual")
+---
+--- @param fallback string A URI, named location or code, following the syntax
+--- (and purpose) of nginx' fallback argument to `try_files`.
+function autozip.try_zip(fallback)
+    -- Make sure empty directory names are not matched, otherwise it could
+    -- lead to the parent directory getting zipped (e.g. with '/foo/.zip')
+    local uriroot, dirname = ngx.var.uri:match('^(.*/([^/]+))%.zip$')
+
+    if not uriroot then
+      return ngx.exec(fallback)
+    end
+
+    -- Hidden directories anywhere in the path should not be served
+    if uriroot:find('/%.') then
+      return ngx.exec(fallback)
+    end
+
+    -- With nginx the uri always starts with '/'
+    local fsroot = ngx.var.document_root:gsub('/$', '') .. uriroot
+
+    -- Ensure that a directory is being served, not a file or something else.
+    -- Note: As written symlinks are allowed as the root directory, but none
+    -- below it will be followed.
+    if lfs.attributes(fsroot, 'mode') ~= 'directory' then
+      return ngx.exec(fallback)
+    end
+
+    -- The Content-Disposition header could be used to also suggest a filename,
+    -- but support is somewhat flacky. It is best to let the user-agent handle
+    -- this by having a URL that ends with the suggested filename.
+    ngx.header.content_disposition = 'attachment'
+    ngx.header.content_type = 'application/zip'
+    autozip.dir(fsroot)
+end
+
 
 return autozip
 
