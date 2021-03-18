@@ -32,6 +32,29 @@ local function n2le(nbytes, number)
     return table.concat(out)
 end
 
+--- Convert a timestamp (seconds since epoch) to UTC DOS date and time values
+--- (each packed on two bytes, cf. [1]).
+---
+--- [1]: https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-filetimetodosdatetime
+---
+--- @param ts? number Timestamp to convert. If not specified, the current time
+--- is used.
+--- @return number date DOS date on 2 bytes
+--- @return number time DOS time on 2 bytes
+local function dosts(ts)
+    local now = os.date('!*t', ts)
+
+    local time = (now.sec - now.sec % 2) / 2    -- >> 1     0-4     sec/2 (0-30)
+               + now.min * 2^5                  -- << 5     5-10    min (0-59)
+               + now.hour * 2^11                -- << 11    11-15   hour (0-23)
+
+    local date = now.day                        --          0-4     day (1-31)
+               + now.month * 2^5                -- << 5     5-8     month (1-12)
+               + (now.year - 1980) * 2^9        -- << 9     9-15    year - 1980
+
+    return date, time
+end
+
 
 --------------------------------------------------------------------------------
 
@@ -45,11 +68,13 @@ end
 --- `io.open`.
 --- @param path string Path of the file inside the archive. Does not need to
 --- match the path on the filesystem. Must be a UTF-8 encoded string.
+--- @param modts? number Timestamp of the last file modification. If not
+--- provided, the current time will be used.
 --- @param size? integer Size of the file. If provided, reading more bytes will
 --- result in an error.
 --- @param crc32? integer CRC-32 of the file. If provided, the computed CRC will
 --- be verified against it, and a mismatch will result in an error.
-local function pack(zh, read, path, size, crc32)
+local function pack(zh, read, path, modts, size, crc32)
     --- File metadata, for use later in the central directory
     --- @class fh*
     ---
@@ -61,12 +86,12 @@ local function pack(zh, read, path, size, crc32)
     --- @field crc32 integer|nil CRC-32 of the file.
     local fh = {
         path = path,
-        mtime = 0,
-        mdate = 0,
         offset = zh.count,
         size = size,
         crc32 = crc32
     }
+
+    fh.mdate, fh.mtime = dosts(modts)
 
     table.insert(zh.directory, fh)
 
