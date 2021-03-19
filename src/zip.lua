@@ -32,8 +32,8 @@ local function n2le(nbytes, number)
     return table.concat(out)
 end
 
---- Convert a timestamp (seconds since epoch) to UTC DOS date and time values
---- (each packed on two bytes, cf. [1]).
+--- Convert a timestamp (seconds since epoch) to DOS date and time values (each
+--- packed on two bytes, cf. [1]).
 ---
 --- [1]: https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-filetimetodosdatetime
 ---
@@ -42,7 +42,7 @@ end
 --- @return number date DOS date on 2 bytes
 --- @return number time DOS time on 2 bytes
 local function dosts(ts)
-    local now = os.date('!*t', ts)
+    local now = os.date('*t', ts)
 
     local time = (now.sec - now.sec % 2) / 2    -- >> 1     0-4     sec/2 (0-30)
                + now.min * 2^5                  -- << 5     5-10    min (0-59)
