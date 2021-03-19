@@ -98,7 +98,7 @@ function crc32.crc32(str, crc)
     -- integers using a function in a tight loop.
     local c0, c1, c2, c3 = i2b(crc)
 
-    -- crc = crc ^ 0xffffff
+    -- crc = crc ^ 0xffffffff
     c0, c1, c2, c3 = _xor[255][c0], _xor[255][c1], _xor[255][c2], _xor[255][c3]
 
     -- foreach byte in str: crc = _crc[(crc ^ byte) & 0xff] ^ (crc >> 8)
@@ -111,7 +111,7 @@ function crc32.crc32(str, crc)
         c3 =      _crc3[k]      -- n ^ 0 == n
     end
 
-    -- crc = crc ^ 0xffffff
+    -- crc = crc ^ 0xffffffff
     c0, c1, c2, c3 = _xor[255][c0], _xor[255][c1], _xor[255][c2], _xor[255][c3]
 
     return b2i(c0, c1, c2, c3)
