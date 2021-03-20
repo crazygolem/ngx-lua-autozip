@@ -9,6 +9,12 @@ the modules provided by the target environment, namely the `ngx` module
 provided by openresty and possibly in the future dependencies on the modules
 included in LuaJIT as it is the interpreter used by openresty.
 
+There is an additional optional dependency on zlib, which is installed on most
+base linux distributions, to dramatically improve performances of the CRC-32
+computations compared to the pure lua implementation. The zlib library is loaded
+through LuaJIT's `ffi` module, which makes `ffi` only an optional dependency for
+now.
+
 ## Why autozip
 
 Autozip can be used when [mod_zip] is not available out of the box or via your
@@ -33,11 +39,15 @@ the list of files required by mod_zip: check out `autozip.mod_zip_filelist`.
 
 ## Why not autozip
 
-It is painfully slow. And it uses a lot of CPU. Those two are related. Please
-open tickets or contribute if you know how to improve the situation.
+It is painfully slow without the support of the native zlib library, and still
+somewhat slow with it. And it uses a lot of CPU. Please open tickets or
+contribute if you know how to improve the situation.
 
 It is not well tested. It is not super complex, but a few tests here and there
 wouldn't hurt. Dear reader, you are welcome to help with that.
+
+It is not tested on a variety of distributions or operating systems, and might
+break on yours. Feedbacks are appreciated.
 
 It doesn't have the zip feature that you need. The selected zip feature set is
 pretty much on point for the target usage: zipping on the fly potentially large

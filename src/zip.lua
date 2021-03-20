@@ -7,7 +7,49 @@ local zip = {}
 -- - https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
 
 
-local crc = require 'crc32'
+local crc32
+
+-- If the zlib library is installed on the system, and it is by default on most,
+-- it is loaded and used through LuaJIT's ffi library to significantly improve
+-- performances. Otherwise the pure lua implementation is loaded.
+if not pcall(function()
+    local ffi = require 'ffi'
+
+    -- On some distributions the standard zlib package provides 'libz.so' and
+    -- the example on LuaJIT's website works:
+    --
+    --     ffi.load('z')
+    --
+    -- However on other distributions like debian and alpine, the standard
+    -- package only provides 'libz.so.1' without the 'libz.so' symlink and
+    -- ffi.load doesn't find it: an extra 'dev' package must be manually
+    -- installed for the unversioned 'libz.so' symlink (on debian: 'zlib1g-dev';
+    -- on alpine: 'zlib-dev').
+    --
+    -- Explicitly loading the package from its full soname incl. the ABI version
+    -- makes it work on Debian, and should work on all systems where zlib is
+    -- installed also when 'libz.so' is available.
+    local zlib = ffi.load('libz.so.1')
+    ffi.cdef[[
+        unsigned long crc32(unsigned long crc, const char *buf, unsigned len);
+    ]]
+
+    --- Compute the ZIP-compatible CRC-32 checksum of [str].
+    ---
+    --- The CRC-32 checksum can be computed in several chunks by feeding the
+    --- checksum of the previous chunk into [crc]:
+    ---     assert(crc32('foobar') == crc32('bar', crc32('foo')))
+    ---
+    --- @param str string The bytes to checksum.
+    --- @param crc integer|nil The initial CRC-32 value.
+    --- @return integer crc The CRC-32 checksum, a 32-bit integer.
+    crc32 = function(str, crc)
+        return tonumber(zlib.crc32(crc or 0, str, #str))
+    end
+end) then
+    io.stderr:write('WARNING: could not load zlib; using slow CRC32 implementation\n')
+    crc32 = require('crc32').crc32
+end
 
 --- Convert a lua integer to its little endian representation on the specified
 --- number of bytes.
@@ -72,9 +114,9 @@ end
 --- provided, the current time will be used.
 --- @param size? integer Size of the file. If provided, reading more bytes will
 --- result in an error.
---- @param crc32? integer CRC-32 of the file. If provided, the computed CRC will
+--- @param crc? integer CRC-32 of the file. If provided, the computed CRC will
 --- be verified against it, and a mismatch will result in an error.
-local function pack(zh, read, path, modts, size, crc32)
+local function pack(zh, read, path, modts, size, crc)
     --- File metadata, for use later in the central directory
     --- @class fh*
     ---
@@ -83,12 +125,12 @@ local function pack(zh, read, path, modts, size, crc32)
     --- @field mdate integer File modification date, in DOS format.
     --- @field offset integer Byte offset of this file from the start of the stream.
     --- @field size integer|nil File size in bytes.
-    --- @field crc32 integer|nil CRC-32 of the file.
+    --- @field crc integer|nil CRC-32 of the file.
     local fh = {
         path = path,
         offset = zh.count,
         size = size,
-        crc32 = crc32
+        crc = crc
     }
 
     fh.mdate, fh.mtime = dosts(modts)
@@ -137,7 +179,7 @@ local function pack(zh, read, path, modts, size, crc32)
     -- Data
 
     local size = 0
-    local crc32
+    local crc
     while true do
         local data = read(8192) -- TODO: Check other sizes (e.g. 32k, 64, 128k), make it configurable
         if not data then break end
@@ -151,7 +193,7 @@ local function pack(zh, read, path, modts, size, crc32)
                 #zh.directory, fh.path, fh.size, size))
         end
 
-        crc32 = crc.crc32(data, crc32)
+        crc = crc32(data, crc)
     end
 
     if fh.size and fh.size ~= size then
@@ -160,22 +202,22 @@ local function pack(zh, read, path, modts, size, crc32)
             #zh.directory, fh.path, fh.size, size))
     end
 
-    if fh.crc32 and fh.crc32 ~= crc32 then
+    if fh.crc and fh.crc ~= crc then
         error(string.format(
             'file #%d %s: CRC mismatch: expected %s, got %s instead',
             #zh.directory, fh.path,
-            string.format('%08X', fh.crc32), string.format('%08X', crc32)))
+            string.format('%08X', fh.crc), string.format('%08X', crc)))
     end
 
     fh.size = size
-    fh.crc32 = crc32
+    fh.crc = crc
 
     ------------------------------------------------------------------------
     -- Data descriptor
     -- @see APPNOTE 4.3.9 Data descriptor
 
     zh:wn(4, 0x08074b50)        -- DD signature
-    zh:wn(4, fh.crc32)          -- CRC32
+    zh:wn(4, fh.crc)            -- CRC32
     zh:wn(8, fh.size)           -- Compressed size (ZIP64)
     zh:wn(8, fh.size)           -- Uncompressed size (ZIP64)
 end
@@ -206,7 +248,7 @@ local function close(zh)
         zh:wn(2, 0)             -- Compression method: none
         zh:wn(2, fh.mtime)      -- File modification time
         zh:wn(2, fh.mdate)      -- File modification date
-        zh:wn(4, fh.crc32)      -- CRC32
+        zh:wn(4, fh.crc)        -- CRC32
         zh:wn(4, -1)            -- Compressed size; ZIP64 constant
         zh:wn(4, -1)            -- Uncompressed size; ZIP64 constant
         zh:wn(2, #fh.path)      -- File name length
