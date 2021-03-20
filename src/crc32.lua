@@ -1,4 +1,7 @@
---- Pure lua implementation of the CRC-32 checksum algorithm used in ZIP files.
+-- TODO: Investigate possible improvements based on https://create.stephan-brumme.com/crc32/
+-- TODO: Investigate performance improvements from using LuaJIT's 'bit' module
+
+--- Functions to compute the CRC-32 checksum used in ZIP files.
 local crc32 = {}
 
 --- Decompose a 32-bit integer into its byte components.
@@ -81,7 +84,8 @@ for i = 0, 255 do
 end
 
 
---- Compute the ZIP-compatible CRC-32 checksum of [str].
+--- Compute the ZIP-compatible CRC-32 checksum of [str], implemented in pure lua
+--- without external dependencies.
 ---
 --- The CRC-32 checksum can be computed in several chunks by feeding the
 --- checksum of the previous chunk into [crc]:
@@ -90,7 +94,7 @@ end
 --- @param str string The bytes to checksum.
 --- @param crc integer|nil The initial CRC-32 value.
 --- @return integer crc The CRC-32 checksum, a 32-bit integer.
-function crc32.crc32(str, crc)
+function crc32.pure(str, crc)
     crc = (crc or 0) % 2^32
 
     -- Working on individual bytes allows to use small-ish lookup tables for the

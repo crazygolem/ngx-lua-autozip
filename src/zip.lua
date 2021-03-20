@@ -48,7 +48,7 @@ if not pcall(function()
     end
 end) then
     io.stderr:write('WARNING: could not load zlib; using slow CRC32 implementation\n')
-    crc32 = require('crc32').crc32
+    crc32 = require('crc32').pure
 end
 
 --- Convert a lua integer to its little endian representation on the specified
