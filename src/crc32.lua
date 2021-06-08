@@ -1,6 +1,9 @@
 -- TODO: Investigate possible improvements based on https://create.stephan-brumme.com/crc32/
 -- TODO: Investigate performance improvements from using LuaJIT's 'bit' module
 
+--- @alias byte integer Integer values 0-255
+
+
 --- Functions to compute the CRC-32 checksum used in ZIP files.
 local crc32 = {}
 
